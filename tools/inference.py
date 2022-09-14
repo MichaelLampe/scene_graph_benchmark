@@ -179,39 +179,43 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
     cfg.MODEL.DEVICE = f"cuda:{MPI.COMM.Get_rank()}"
     cfg.freeze()
 
-    ###
-    # Load Images
-    ###
-    img_files = bf.listdir(image_directory)
-    allowed_extensions = {"jpg", "jpeg", "png"}
-    img_files = []
-    for f in bf.listdir(image_directory):
-        ext = f.split(".")[-1].lower()
-        if ext not in allowed_extensions:
-            continue
-        full_path = bf.join(image_directory, f)
-        img_files.append(full_path)
+    if MPI.COMM.Get_rank() == 0:
+        ###
+        # Load Images
+        ###
+        
+        img_files = bf.listdir(image_directory)
+        allowed_extensions = {"jpg", "jpeg", "png"}
+        img_files = []
+        for f in bf.listdir(image_directory):
+            ext = f.split(".")[-1].lower()
+            if ext not in allowed_extensions:
+                continue
+            full_path = bf.join(image_directory, f)
+            img_files.append(full_path)
 
-    if len(img_files) == 0:
-        raise RuntimeError(f"No images found in {image_directory}")
+        if len(img_files) == 0:
+            raise RuntimeError(f"No images found in {image_directory}")
 
-    ###
-    # Create working directory
-    ###
-    if working_directory is None:
-        working_directory = f"sgb_working_dir/{uuid.uuid4()}"
+        ###
+        # Create working directory
+        ###
+        if working_directory is None:
+            working_directory = f"sgb_working_dir/{uuid.uuid4()}"
 
-    if not bf.exists(working_directory):
-        bf.makedirs(working_directory)
+        if not bf.exists(working_directory):
+            bf.makedirs(working_directory)
 
-    ###
-    # Output Directory
-    ###
-    if output_dir is None:
-        output_dir = cfg.OUTPUT_DIR
+        ###
+        # Output Directory
+        ###
+        if output_dir is None:
+            output_dir = cfg.OUTPUT_DIR
 
-    if not bf.exists(output_dir):
-        bf.makedirs(output_dir)
+        if not bf.exists(output_dir):
+            bf.makedirs(output_dir)
+
+    MPI.COMM.barrier()
 
     ###
     # Load Model
@@ -230,24 +234,33 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
     ###
     # Load datasets and label map
     ###
+    dataset_allmap = None
     dataset_labelmap = {}
-    with bf.BlobFile(cfg.DATASETS.LABELMAP_FILE, "r") as f:
-        dataset_allmap = json.load(f)
-        dataset_labelmap = {int(val): key for key, val in dataset_allmap["label_to_idx"].items()}
+    if MPI.COMM.Get_rank() == 0:
+        with bf.BlobFile(cfg.DATASETS.LABELMAP_FILE, "r") as f:
+            dataset_allmap = json.load(f)
+            dataset_labelmap = {int(val): key for key, val in dataset_allmap["label_to_idx"].items()}
 
     visual_labelmap = None
+    dataset_allmap, dataset_labelmap = MPI.COMM.bcast([dataset_allmap, dataset_labelmap], root=0)
+
     ###
     # Load in the correct relations, if germane
     ###
-    if cfg.MODEL.ATTRIBUTE_ON:
-        dataset_attr_labelmap = {
-            int(val): key for key, val in dataset_allmap["attribute_to_idx"].items()
-        }
+    dataset_attr_labelmap = None
+    dataset_relation_labelmap = None
+    if MPI.COMM.Get_rank() == 0:
+        if cfg.MODEL.ATTRIBUTE_ON:
+            dataset_attr_labelmap = {
+                int(val): key for key, val in dataset_allmap["attribute_to_idx"].items()
+            }
 
-    if cfg.MODEL.RELATION_ON:
-        dataset_relation_labelmap = {
-            int(val): key for key, val in dataset_allmap["predicate_to_idx"].items()
-        }
+        if cfg.MODEL.RELATION_ON:
+            dataset_relation_labelmap = {
+                int(val): key for key, val in dataset_allmap["predicate_to_idx"].items()
+            }
+    
+    dataset_attr_labelmap, dataset_relation_labelmap = MPI.COMM.bcast([dataset_attr_labelmap, dataset_relation_labelmap], root=0)
 
     transforms = build_transforms(cfg, is_train=False)
 
