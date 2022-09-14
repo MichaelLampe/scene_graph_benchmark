@@ -3,6 +3,7 @@
 #include <ATen/cuda/CUDAContext.h>
 
 #include <THC/THC.h>
+#include <c10/cuda/CUDAGuard.h>
 #include <THC/THCDeviceUtils.cuh>
 
 #include <vector>
@@ -83,10 +84,7 @@ at::Tensor nms_cuda(const at::Tensor boxes, float nms_overlap_thresh) {
   THCState *state = at::globalContext().lazyInitCUDA(); // TODO replace with getTHCState
 
   unsigned long long* mask_dev = NULL;
-  //THCudaCheck(THCudaMalloc(state, (void**) &mask_dev,
-  //                      boxes_num * col_blocks * sizeof(unsigned long long)));
-
-  mask_dev = (unsigned long long*) THCudaMalloc(state, boxes_num * col_blocks * sizeof(unsigned long long));
+  mask_dev = (unsigned long long*) C10_CUDA_CHECK(state, boxes_num * col_blocks * sizeof(unsigned long long));
 
   dim3 blocks(THCCeilDiv(boxes_num, threadsPerBlock),
               THCCeilDiv(boxes_num, threadsPerBlock));
@@ -97,7 +95,7 @@ at::Tensor nms_cuda(const at::Tensor boxes, float nms_overlap_thresh) {
                                   mask_dev);
 
   std::vector<unsigned long long> mask_host(boxes_num * col_blocks);
-  THCudaCheck(cudaMemcpy(&mask_host[0],
+  C10_CUDA_CHECK(cudaMemcpy(&mask_host[0],
                         mask_dev,
                         sizeof(unsigned long long) * boxes_num * col_blocks,
                         cudaMemcpyDeviceToHost));

@@ -1,0 +1,14 @@
+einops
+timm
+pycocotools
+cityscapesscripts
+ninja
+yacs>=0.1.8
+cython
+matplotlib
+tqdm
+opencv-python
+numpy>=1.19.5
+torch
+torchvision
+blobfile

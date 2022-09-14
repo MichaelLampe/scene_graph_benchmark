@@ -4,6 +4,7 @@
 
 #include <THC/THC.h>
 #include <THC/THCAtomics.cuh>
+#include <c10/cuda/CUDAGuard.h>
 #include <THC/THCDeviceUtils.cuh>
 
 
@@ -130,7 +131,7 @@ std::tuple<at::Tensor, at::Tensor> ROIPool_forward_cuda(const at::Tensor& input,
   dim3 block(512);
 
   if (output.numel() == 0) {
-    THCudaCheck(cudaGetLastError());
+    C10_CUDA_CHECK(cudaGetLastError());
     return std::make_tuple(output, argmax);
   }
 
@@ -148,7 +149,7 @@ std::tuple<at::Tensor, at::Tensor> ROIPool_forward_cuda(const at::Tensor& input,
          output.data_ptr<scalar_t>(),
          argmax.data_ptr<int>());
   });
-  THCudaCheck(cudaGetLastError());
+  C10_CUDA_CHECK(cudaGetLastError());
   return std::make_tuple(output, argmax);
 }
 
@@ -178,7 +179,7 @@ at::Tensor ROIPool_backward_cuda(const at::Tensor& grad,
 
   // handle possibly empty gradients
   if (grad.numel() == 0) {
-    THCudaCheck(cudaGetLastError());
+    C10_CUDA_CHECK(cudaGetLastError());
     return grad_input;
   }
 
@@ -197,6 +198,6 @@ at::Tensor ROIPool_backward_cuda(const at::Tensor& grad,
          grad_input.data_ptr<scalar_t>(),
          rois.contiguous().data_ptr<scalar_t>());
   });
-  THCudaCheck(cudaGetLastError());
+  C10_CUDA_CHECK(cudaGetLastError());
   return grad_input;
 }

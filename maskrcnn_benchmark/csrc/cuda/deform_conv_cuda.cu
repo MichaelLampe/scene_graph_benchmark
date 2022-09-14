@@ -5,6 +5,7 @@
 #include <ATen/cuda/CUDAContext.h>
 
 #include <THC/THC.h>
+#include <c10/cuda/CUDAGuard.h>
 #include <THC/THCDeviceUtils.cuh>
 
 #include <vector>

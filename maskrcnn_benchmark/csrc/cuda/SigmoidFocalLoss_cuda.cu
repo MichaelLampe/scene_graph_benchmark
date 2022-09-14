@@ -9,6 +9,8 @@
 #include <THC/THCAtomics.cuh>
 #include <THC/THCDeviceUtils.cuh>
 
+#include <c10/cuda/CUDAGuard.h>
+
 #include <cfloat>
 
 // TODO make it in a common file
@@ -121,7 +123,7 @@ at::Tensor SigmoidFocalLoss_forward_cuda(
   dim3 block(512);
 
   if (losses.numel() == 0) {
-    THCudaCheck(cudaGetLastError());
+    C10_CUDA_CHECK(cudaGetLastError());
     return losses;
   }
 
@@ -136,7 +138,7 @@ at::Tensor SigmoidFocalLoss_forward_cuda(
 	 num_samples,
          losses.data_ptr<scalar_t>());
   });
-  THCudaCheck(cudaGetLastError());
+  C10_CUDA_CHECK(cudaGetLastError());
   return losses;   
 }	
 
@@ -165,7 +167,7 @@ at::Tensor SigmoidFocalLoss_backward_cuda(
   dim3 block(512);
 
   if (d_logits.numel() == 0) {
-    THCudaCheck(cudaGetLastError());
+    C10_CUDA_CHECK(cudaGetLastError());
     return d_logits;
   }
 
@@ -182,7 +184,7 @@ at::Tensor SigmoidFocalLoss_backward_cuda(
          d_logits.data_ptr<scalar_t>());
   });
 
-  THCudaCheck(cudaGetLastError());
+  C10_CUDA_CHECK(cudaGetLastError());
   return d_logits;   
 }	
 
