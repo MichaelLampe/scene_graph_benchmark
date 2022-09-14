@@ -31,10 +31,10 @@ def split_by_rank(data):
     data = list(data)
     count = len(data)
 
-    n_samples_per_rank = max(count // MPI.COMM.Get_size(), 1)
+    n_samples_per_rank = max(count // MPI.COMM_WORLD.Get_size(), 1)
 
-    start_idx = n_samples_per_rank * MPI.COMM.Get_rank()
-    end_idx = n_samples_per_rank * (MPI.COMM.Get_rank() + 1)
+    start_idx = n_samples_per_rank * MPI.COMM_WORLD.Get_rank()
+    end_idx = n_samples_per_rank * (MPI.COMM_WORLD.Get_rank() + 1)
 
     return data[start_idx:end_idx]
 
@@ -176,10 +176,10 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
     cfg.set_new_allowed(False)
     cfg.merge_from_file(config_file)
     cfg.merge_from_list(opts)
-    cfg.MODEL.DEVICE = f"cuda:{MPI.COMM.Get_rank()}"
+    cfg.MODEL.DEVICE = f"cuda:{MPI.COMM_WORLD.Get_rank()}"
     cfg.freeze()
 
-    if MPI.COMM.Get_rank() == 0:
+    if MPI.COMM_WORLD.Get_rank() == 0:
         ###
         # Load Images
         ###
@@ -215,7 +215,7 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
         if not bf.exists(output_dir):
             bf.makedirs(output_dir)
 
-    MPI.COMM.barrier()
+    MPI.COMM_WORLD.barrier()
 
     ###
     # Load Model
@@ -236,20 +236,20 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
     ###
     dataset_allmap = None
     dataset_labelmap = {}
-    if MPI.COMM.Get_rank() == 0:
+    if MPI.COMM_WORLD.Get_rank() == 0:
         with bf.BlobFile(cfg.DATASETS.LABELMAP_FILE, "r") as f:
             dataset_allmap = json.load(f)
             dataset_labelmap = {int(val): key for key, val in dataset_allmap["label_to_idx"].items()}
 
     visual_labelmap = None
-    dataset_allmap, dataset_labelmap = MPI.COMM.bcast([dataset_allmap, dataset_labelmap], root=0)
+    dataset_allmap, dataset_labelmap = MPI.COMM_WORLD.bcast([dataset_allmap, dataset_labelmap], root=0)
 
     ###
     # Load in the correct relations, if germane
     ###
     dataset_attr_labelmap = None
     dataset_relation_labelmap = None
-    if MPI.COMM.Get_rank() == 0:
+    if MPI.COMM_WORLD.Get_rank() == 0:
         if cfg.MODEL.ATTRIBUTE_ON:
             dataset_attr_labelmap = {
                 int(val): key for key, val in dataset_allmap["attribute_to_idx"].items()
@@ -260,7 +260,7 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
                 int(val): key for key, val in dataset_allmap["predicate_to_idx"].items()
             }
     
-    dataset_attr_labelmap, dataset_relation_labelmap = MPI.COMM.bcast([dataset_attr_labelmap, dataset_relation_labelmap], root=0)
+    dataset_attr_labelmap, dataset_relation_labelmap = MPI.COMM_WORLD.bcast([dataset_attr_labelmap, dataset_relation_labelmap], root=0)
 
     transforms = build_transforms(cfg, is_train=False)
 
@@ -378,9 +378,9 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
     ###
     # Write output on main thread
     ###
-    if MPI.COMM.Get_rank() == 0:
+    if MPI.COMM_WORLD.Get_rank() == 0:
         summary = functools.reduce(
-            operator.concat, MPI.COMM.gather(image_summaries, root=0)
+            operator.concat, MPI.COMM_WORLD.gather(image_summaries, root=0)
         )
         output = {
             "cfg": cfg,
@@ -394,7 +394,7 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
                 },
                 "cfg": cfg,
                 "mpi": {
-                    "size": MPI.COMM.Get_size()
+                    "size": MPI.COMM_WORLD.Get_size()
                 }
             },
             "images": summary
