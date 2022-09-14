@@ -214,8 +214,8 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
 
         if not bf.exists(output_dir):
             bf.makedirs(output_dir)
-
-    MPI.COMM_WORLD.barrier()
+    
+    output_dir, working_directory, img_files = MPI.COMM_WORLD.bcast([output_dir, working_directory, img_files], root=0)
 
     ###
     # Load Model
