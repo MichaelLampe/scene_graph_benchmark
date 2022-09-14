@@ -84,7 +84,7 @@ at::Tensor nms_cuda(const at::Tensor boxes, float nms_overlap_thresh) {
   THCState *state = at::globalContext().lazyInitCUDA(); // TODO replace with getTHCState
 
   unsigned long long* mask_dev = NULL;
-  mask_dev = (unsigned long long*) C10_CUDA_CHECK(state, boxes_num * col_blocks * sizeof(unsigned long long));
+  mask_dev = (unsigned long long*) c10::cuda::CUDACachingAllocator::raw_alloc(state, boxes_num * col_blocks * sizeof(unsigned long long));
 
   dim3 blocks(THCCeilDiv(boxes_num, threadsPerBlock),
               THCCeilDiv(boxes_num, threadsPerBlock));
