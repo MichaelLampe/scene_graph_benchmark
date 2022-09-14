@@ -183,8 +183,6 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
         ###
         # Load Images
         ###
-        
-        img_files = bf.listdir(image_directory)
         allowed_extensions = {"jpg", "jpeg", "png"}
         img_files = []
         for f in bf.listdir(image_directory):
@@ -214,6 +212,10 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
 
         if not bf.exists(output_dir):
             bf.makedirs(output_dir)
+    else:
+        output_dir = None
+        working_directory = None
+        img_files = None
     
     output_dir, working_directory, img_files = MPI.COMM_WORLD.bcast([output_dir, working_directory, img_files], root=0)
 
