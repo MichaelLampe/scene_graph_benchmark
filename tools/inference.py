@@ -3,7 +3,9 @@
 # Shengli's changes
 
 import argparse
+import functools
 import json
+import operator
 import os
 import os.path as op
 from tkinter import W
@@ -14,20 +16,27 @@ import blobfile as bf
 import cv2
 import torch
 from maskrcnn_benchmark.config import cfg
-from maskrcnn_benchmark.data.datasets.utils.load_files import (
-    config_dataset_file,
-    load_labelmap_file,
-)
 from maskrcnn_benchmark.data.transforms import build_transforms
 from maskrcnn_benchmark.utils.checkpoint import DetectronCheckpointer
-from maskrcnn_benchmark.utils.miscellaneous import mkdir
 from PIL import Image
 from scene_graph_benchmark.AttrRCNN import AttrRCNN
 from scene_graph_benchmark.config import sg_cfg
 from scene_graph_benchmark.scene_parser import SceneParser
 from tools.demo.visual_utils import draw_bb, draw_rel
 from tqdm import tqdm
+from mpi4py import MPI
 
+
+def split_by_rank(data):
+    data = list(data)
+    count = len(data)
+
+    n_samples_per_rank = max(count // MPI.COMM.Get_size(), 1)
+
+    start_idx = n_samples_per_rank * MPI.COMM.Get_rank()
+    end_idx = n_samples_per_rank * (MPI.COMM.Get_rank() + 1)
+
+    return data[start_idx:end_idx]
 
 def cv2Img_to_Image(input_img):
     cv2_img = input_img.copy()
@@ -167,6 +176,7 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
     cfg.set_new_allowed(False)
     cfg.merge_from_file(config_file)
     cfg.merge_from_list(opts)
+    cfg.MODEL.DEVICE = f"cuda:{MPI.COMM.Get_rank()}"
     cfg.freeze()
 
     ###
@@ -241,8 +251,8 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
 
     transforms = build_transforms(cfg, is_train=False)
 
-    # cv2_imgs = []
-    for img_file in tqdm(img_files):
+    image_summaries = []
+    for img_file in tqdm(split_by_rank(img_files)):
         ###
         # Copy images to our local
         ###
@@ -253,7 +263,6 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
 
         detections = detect_objects_on_single_image(model, transforms, cv2_img)
 
-        # for dets, cv2_img, img_file in zip(detss, cv2_imgs, img_files):
         if isinstance(model, SceneParser):
             relationship_detections = detections["relations"]
             detections = detections["objects"]
@@ -302,7 +311,7 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
             rel_labels = [r["class"] for r in relationship_detections]
             draw_rel(cv2_img, rel_subj_centers, rel_obj_centers, rel_labels, rel_scores)
 
-        save_file_fn = op.splitext(img_file)[0] + ".detect" + op.splitext(img_file)[-1]
+        save_file_fn = bf.basename(img_file) + ".detect" + op.splitext(img_file)[-1]
         save_file = bf.join(output_dir, save_file_fn)
 
         cv2.imwrite(save_file, cv2_img)
@@ -347,9 +356,40 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
         }
 
         json_result = json.dumps(full_output)
+        image_summaries.append(full_output)
         with bf.BlobFile(json_output, "w") as f:
             f.write(json_result)
             print("saved img results to: {}".format(json_output))
+
+
+    ###
+    # Write output on main thread
+    ###
+    if MPI.COMM.Get_rank() == 0:
+        summary = functools.reduce(
+            operator.concat, MPI.COMM.gather(image_summaries, root=0)
+        )
+        output = {
+            "cfg": cfg,
+            "metadata": {
+                "args": {
+                    "config_file": config_file,
+                    "image_directory": image_directory,
+                    "working_directory": working_directory,
+                    "output_directory": output_dir,
+                    "opts": opts
+                },
+                "cfg": cfg,
+                "mpi": {
+                    "size": MPI.COMM.Get_size()
+                }
+            },
+            "images": summary
+        }
+        json_full_result = json.dumps(output)
+        with bf.BlobFile(json_output, "w") as f:
+            f.write(json_full_result)
+            print("saved summary of all images to: {}".format(json_output))
 
 def main():
     parser = argparse.ArgumentParser(description="Object-Attribute Detection")

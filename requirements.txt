@@ -12,3 +12,5 @@ numpy>=1.19.5
 torch
 torchvision
 blobfile
+
+mpi4py
