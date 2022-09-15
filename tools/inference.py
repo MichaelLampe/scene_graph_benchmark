@@ -14,6 +14,7 @@ from typing import List, Optional
 import uuid
 
 import blobfile as bf
+from blobfile._context import _is_local_path
 import cv2
 import torch
 from maskrcnn_benchmark.config import cfg
@@ -363,10 +364,15 @@ def run(
             rel_labels = [r["class"] for r in relationship_detections]
             draw_rel(cv2_img, rel_subj_centers, rel_obj_centers, rel_labels, rel_scores)
 
-        save_file_fn = bf.basename(img_file) + ".detect" + op.splitext(img_file)[-1]
-        save_file = bf.join(annotated_image_base_output_directory, save_file_fn)
+        save_file_file_name = bf.basename(img_file) + ".detect" + op.splitext(img_file)[-1]
+        save_file = bf.join(annotated_image_base_output_directory, save_file_file_name)
 
-        cv2.imwrite(save_file, cv2_img)
+        if not _is_local_path(save_file):
+            local_save_file = os.path.join(working_directory, save_file_file_name)
+            cv2.imwrite(local_save_file, cv2_img)
+            bf.copy(local_save_file, save_file)
+        else:
+            cv2.imwrite(save_file, cv2_img)
         print("saved img results to: {}".format(save_file))
 
         relationship_detections_output = None
