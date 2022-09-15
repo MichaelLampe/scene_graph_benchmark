@@ -10,7 +10,7 @@ import operator
 import os
 import os.path as op
 from tkinter import W
-from typing import Optional
+from typing import List, Optional
 import uuid
 
 import blobfile as bf
@@ -178,7 +178,7 @@ def run(
     image_directory: str,
     working_directory: Optional[str] = None,
     output_dir: Optional[str] = None,
-    opts: Optional[dict] = None,
+    opts: Optional[List] = None,
 ):
     ###
     # Load configurations
@@ -187,7 +187,7 @@ def run(
     cfg.merge_from_other_cfg(sg_cfg)
     cfg.set_new_allowed(False)
     cfg.merge_from_file(config_file)
-    cfg.merge_from_list(opts)
+    cfg.merge_from_list(opts or [])
     cfg.MODEL.DEVICE = f"cuda:{MPI.COMM_WORLD.Get_rank()}"
     cfg.freeze()
 
