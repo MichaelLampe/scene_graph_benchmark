@@ -3,6 +3,7 @@
 # Shengli's changes
 
 import argparse
+from dataclasses import dataclass
 import functools
 import json
 import operator
@@ -168,6 +169,9 @@ def postprocess_attr(dataset_attr_labelmap, label_list, conf_list):
     else:
         return [[], []]
 
+@dataclass
+class InferenceOutput:
+    summary_path: str
 
 def run(
     config_file: str,
@@ -220,14 +224,30 @@ def run(
 
         if not bf.exists(output_dir):
             bf.makedirs(output_dir)
+
+        image_metadata_base_output_directory = bf.join(output_dir, "metadata")
+        if not bf.exists(image_metadata_base_output_directory):
+            bf.makedirs(image_metadata_base_output_directory)
+
+        annotated_image_base_output_directory = bf.join(output_dir, "detected")
+        if not bf.exists(annotated_image_base_output_directory):
+            bf.makedirs(annotated_image_base_output_directory)
     else:
         output_dir = None
         working_directory = None
         img_files = None
+        image_metadata_base_output_directory = None
+        annotated_image_base_output_directory = None
 
-    output_dir, working_directory, img_files = MPI.COMM_WORLD.bcast(
-        [output_dir, working_directory, img_files], root=0
-    )
+    broadcasts = [
+        output_dir,
+        working_directory,
+        image_metadata_base_output_directory,
+        annotated_image_base_output_directory,
+        img_files
+    ]
+    output_dir, working_directory, image_metadata_base_output_directory, annotated_image_base_output_directory, img_files = MPI.COMM_WORLD.bcast(broadcasts, root=0)
+    summary_file_path = bf.join(output_dir, "summary.json")
 
     ###
     # Load Model
@@ -344,7 +364,7 @@ def run(
             draw_rel(cv2_img, rel_subj_centers, rel_obj_centers, rel_labels, rel_scores)
 
         save_file_fn = bf.basename(img_file) + ".detect" + op.splitext(img_file)[-1]
-        save_file = bf.join(output_dir, save_file_fn)
+        save_file = bf.join(annotated_image_base_output_directory, save_file_fn)
 
         cv2.imwrite(save_file, cv2_img)
         print("saved img results to: {}".format(save_file))
@@ -380,7 +400,7 @@ def run(
                 }
                 attr_detections_output.append(object_detection_output)
 
-            json_output = op.splitext(save_file)[0] + ".json"
+        json_output_path = bf.join(image_metadata_base_output_directory, f"{bf.basename(img_file)}.json")
 
         full_output = {
             "image": img_file,
@@ -391,9 +411,9 @@ def run(
 
         json_result = json.dumps(full_output)
         image_summaries.append(full_output)
-        with bf.BlobFile(json_output, "w") as f:
+        with bf.BlobFile(json_output_path, "w") as f:
             f.write(json_result)
-            print("saved img results to: {}".format(json_output))
+            print("saved img results to: {}".format(json_output_path))
 
     ###
     # Write output on main thread
@@ -405,7 +425,13 @@ def run(
 
         output = {
             "images": summary,
-            "cfg": cfg,
+            "file_locations": {
+                "source_images_directory": image_directory,
+                "output_directory": output_dir,
+                "working_directory": working_directory,
+                "image_metadata_base_output_directory": image_metadata_base_output_directory,
+                "annotated_image_base_output_directory": annotated_image_base_output_directory,
+            },
             "metadata": {
                 "args": {
                     "config_file": config_file,
@@ -414,16 +440,19 @@ def run(
                     "output_directory": output_dir,
                     "opts": opts,
                 },
-                "cfg": cfg,
                 "mpi": {"size": MPI.COMM_WORLD.Get_size()},
+                "cfg": cfg,
             },
         }
 
-        summary_file_path = bf.join(output_dir, "summary.json")
         json_full_result = json.dumps(output)
         with bf.BlobFile(summary_file_path, "w") as f:
             f.write(json_full_result)
             print("saved summary of all images to: {}".format(summary_file_path))
+    
+    return InferenceOutput(
+        summary_file_path=summary_file_path,
+    )
 
 
 def main():
