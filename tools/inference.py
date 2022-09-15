@@ -451,7 +451,7 @@ def run(
             print("saved summary of all images to: {}".format(summary_file_path))
     
     return InferenceOutput(
-        summary_file_path=summary_file_path,
+        summary_path=summary_file_path,
     )
 
 
