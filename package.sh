@@ -7,7 +7,7 @@ wget -nc https://penzhanwu2.blob.core.windows.net/sgg/sgg_benchmark/vinvl_model_
 wget -nc https://penzhanwu2.blob.core.windows.net/sgg/sgg_benchmark/vinvl_model_zoo/VG-SGG-dicts-vgoi6-clipped.json
 
 echo "Packaging commit $CURRENT_GIT_COMMIT"
-cp ..
+cd ..
 tar -czvf $FILE_NAME $BASE_DIRECTORY
 mv $FILE_NAME $BASE_DIRECTORY
 cd $BASE_DIRECTORY
