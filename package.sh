@@ -9,5 +9,5 @@ wget -nc https://penzhanwu2.blob.core.windows.net/sgg/sgg_benchmark/vinvl_model_
 echo "Packaging commit $CURRENT_GIT_COMMIT"
 cp ..
 tar -czvf $FILE_NAME $BASE_DIRECTORY
-mv FILE_NAME $BASE_DIRECTORY
+mv $FILE_NAME $BASE_DIRECTORY
 cd $BASE_DIRECTORY
