@@ -38,6 +38,7 @@ def split_by_rank(data):
 
     return data[start_idx:end_idx]
 
+
 def cv2Img_to_Image(input_img):
     cv2_img = input_img.copy()
     img = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB)
@@ -120,6 +121,7 @@ def detect_objects_on_single_image(model, transforms, cv2_img):
             for box, cls, score in zip(boxes, classes, scores)
         ]
 
+
 def postprocess_attr(dataset_attr_labelmap, label_list, conf_list):
     common_attributes = {
         "white",
@@ -167,7 +169,13 @@ def postprocess_attr(dataset_attr_labelmap, label_list, conf_list):
         return [[], []]
 
 
-def run(config_file: str, image_directory: str, working_directory: Optional[str] = None, output_dir: Optional[str] = None, opts: Optional[dict] =None):
+def run(
+    config_file: str,
+    image_directory: str,
+    working_directory: Optional[str] = None,
+    output_dir: Optional[str] = None,
+    opts: Optional[dict] = None,
+):
     ###
     # Load configurations
     ###
@@ -216,8 +224,10 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
         output_dir = None
         working_directory = None
         img_files = None
-    
-    output_dir, working_directory, img_files = MPI.COMM_WORLD.bcast([output_dir, working_directory, img_files], root=0)
+
+    output_dir, working_directory, img_files = MPI.COMM_WORLD.bcast(
+        [output_dir, working_directory, img_files], root=0
+    )
 
     ###
     # Load Model
@@ -241,10 +251,14 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
     if MPI.COMM_WORLD.Get_rank() == 0:
         with bf.BlobFile(cfg.DATASETS.LABELMAP_FILE, "r") as f:
             dataset_allmap = json.load(f)
-            dataset_labelmap = {int(val): key for key, val in dataset_allmap["label_to_idx"].items()}
+            dataset_labelmap = {
+                int(val): key for key, val in dataset_allmap["label_to_idx"].items()
+            }
 
     visual_labelmap = None
-    dataset_allmap, dataset_labelmap = MPI.COMM_WORLD.bcast([dataset_allmap, dataset_labelmap], root=0)
+    dataset_allmap, dataset_labelmap = MPI.COMM_WORLD.bcast(
+        [dataset_allmap, dataset_labelmap], root=0
+    )
 
     ###
     # Load in the correct relations, if germane
@@ -261,8 +275,10 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
             dataset_relation_labelmap = {
                 int(val): key for key, val in dataset_allmap["predicate_to_idx"].items()
             }
-    
-    dataset_attr_labelmap, dataset_relation_labelmap = MPI.COMM_WORLD.bcast([dataset_attr_labelmap, dataset_relation_labelmap], root=0)
+
+    dataset_attr_labelmap, dataset_relation_labelmap = MPI.COMM_WORLD.bcast(
+        [dataset_attr_labelmap, dataset_relation_labelmap], root=0
+    )
 
     transforms = build_transforms(cfg, is_train=False)
 
@@ -281,7 +297,6 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
         if isinstance(model, SceneParser):
             relationship_detections = detections["relations"]
             detections = detections["objects"]
-
 
         for obj in detections:
             obj["class"] = dataset_labelmap[obj["class"]]
@@ -313,7 +328,9 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
             attr_labels = [",".join(d["attr"]) for d in detections]
             attr_scores = [d["attr_conf"] for d in detections]
             classes = [d["class"] for d in detections]
-            labels = [attr_label + " " + d["class"] for d, attr_label in zip(detections, attr_labels)]
+            labels = [
+                attr_label + " " + d["class"] for d, attr_label in zip(detections, attr_labels)
+            ]
         else:
             labels = [d["class"] for d in detections]
 
@@ -343,7 +360,9 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
         attr_detections_output = None
         if cfg.MODEL.ATTRIBUTE_ON:
             attr_detections_output = []
-            for label, clazz, score, rect, a_label, a_score in zip(labels, classes, scores, rects, attribute_list, attr_scores):
+            for label, clazz, score, rect, a_label, a_score in zip(
+                labels, classes, scores, rects, attribute_list, attr_scores
+            ):
                 attributes = []
                 for attribute_label, attribute_score in zip(a_label, a_score):
                     attribute_obj = {
@@ -357,7 +376,7 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
                     "class": clazz,
                     "score": score,
                     "attributes": attributes,
-                    "bounding_box": rect
+                    "bounding_box": rect,
                 }
                 attr_detections_output.append(object_detection_output)
 
@@ -376,15 +395,16 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
             f.write(json_result)
             print("saved img results to: {}".format(json_output))
 
-
     ###
     # Write output on main thread
     ###
+    image_summaries = MPI.COMM_WORLD.gather(image_summaries, root=0)
+
     if MPI.COMM_WORLD.Get_rank() == 0:
-        summary = functools.reduce(
-            operator.concat, MPI.COMM_WORLD.gather(image_summaries, root=0)
-        )
+        summary = functools.reduce(operator.concat, image_summaries)
+
         output = {
+            "images": summary,
             "cfg": cfg,
             "metadata": {
                 "args": {
@@ -392,19 +412,19 @@ def run(config_file: str, image_directory: str, working_directory: Optional[str]
                     "image_directory": image_directory,
                     "working_directory": working_directory,
                     "output_directory": output_dir,
-                    "opts": opts
+                    "opts": opts,
                 },
                 "cfg": cfg,
-                "mpi": {
-                    "size": MPI.COMM_WORLD.Get_size()
-                }
+                "mpi": {"size": MPI.COMM_WORLD.Get_size()},
             },
-            "images": summary
         }
+
+        summary_file_path = bf.join(output_dir, "summary.json")
         json_full_result = json.dumps(output)
-        with bf.BlobFile(json_output, "w") as f:
+        with bf.BlobFile(summary_file_path, "w") as f:
             f.write(json_full_result)
-            print("saved summary of all images to: {}".format(json_output))
+            print("saved summary of all images to: {}".format(summary_file_path))
+
 
 def main():
     parser = argparse.ArgumentParser(description="Object-Attribute Detection")
@@ -425,7 +445,7 @@ def main():
         image_directory=args.img_dir,
         working_directory=args.working_directory,
         output_dir=args.output_dir,
-        opts=args.opts
+        opts=args.opts,
     )
 
 
