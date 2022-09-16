@@ -385,7 +385,7 @@ def run(
 
         attr_detections_output = None
         if cfg.MODEL.ATTRIBUTE_ON:
-            attr_detections_output = []
+            object_decection = []
             for label, clazz, score, rect, a_label, a_score in zip(
                 labels, classes, scores, rects, attribute_list, attr_scores
             ):
@@ -404,14 +404,14 @@ def run(
                     "attributes": attributes,
                     "bounding_box": rect,
                 }
-                attr_detections_output.append(object_detection_output)
+                object_decection.append(object_detection_output)
 
         json_output_path = bf.join(image_metadata_base_output_directory, f"{bf.basename(img_file)}.json")
 
         full_output = {
             "image": img_file,
             "annotated_image": save_file,
-            "attributes": attr_detections_output,
+            "objects": object_decection,
             "relationships": relationship_detections_output,
         }
 
